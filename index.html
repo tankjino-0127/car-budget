@@ -311,25 +311,32 @@
 
 <!-- 페이지: 주변 주유소 -->
 <div class="page" id="page-gasstation">
+  <!-- 유종 선택 -->
   <div class="gas-filter-row">
     <div class="gas-chip active" onclick="setGasFuelType('B027',this)">⛽ 휘발유</div>
     <div class="gas-chip" onclick="setGasFuelType('D047',this)">🛢 경유</div>
     <div class="gas-chip" onclick="setGasFuelType('K015',this)">💨 LPG</div>
   </div>
-  <div class="gas-filter-row">
-    <div class="gas-chip active" onclick="setGasRadius(1000,this)">1km</div>
-    <div class="gas-chip" onclick="setGasRadius(2000,this)">2km</div>
-    <div class="gas-chip" onclick="setGasRadius(5000,this)">5km</div>
+  <!-- 지역 선택 -->
+  <div style="display:flex;gap:8px;margin-bottom:10px;">
+    <select id="selCity" class="form-select" style="flex:1;" onchange="onCityChange()">
+      <option value="">시/도 선택</option>
+    </select>
+    <select id="selDistrict" class="form-select" style="flex:1;" onchange="loadGasStations()">
+      <option value="">구/군 선택</option>
+    </select>
   </div>
+  <!-- GPS 버튼 -->
+  <button id="gpsBtn" onclick="useGPS()" style="width:100%;padding:10px;border-radius:12px;border:1.5px dashed var(--primary);background:var(--bg);color:var(--primary);font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+    📍 내 위치로 자동 검색
+  </button>
+  <!-- 정렬 -->
   <div class="gas-sort-row">
     <button class="gas-sort-btn active" id="sortPrice" onclick="setGasSort(1,this)">💰 가격순</button>
-    <button class="gas-sort-btn" id="sortDist" onclick="setGasSort(2,this)">📍 거리순</button>
+    <button class="gas-sort-btn" id="sortDist" onclick="setGasSort(2,this)">거리순</button>
   </div>
   <div id="gasList">
-    <div class="gas-loading">
-      <div class="gas-loading-icon">📡</div>
-      <div style="font-size:14px;color:var(--text-muted);">위치 정보를 불러오는 중...</div>
-    </div>
+    <div class="empty"><div class="empty-icon">🗺️</div><div class="empty-text">시/도와 구/군을 선택하면<br>주유소 가격을 확인할 수 있습니다.</div></div>
   </div>
 </div>
 
@@ -591,7 +598,7 @@ function showPage(name, btn) {
   if (name === 'dashboard') renderDashboard();
   if (name === 'records') renderAllRecords();
   if (name === 'stats') renderStats();
-  if (name === 'gasstation') loadGasStations();
+  if (name === 'gasstation') initCitySelector();
   if (name === 'settings') renderSettings();
 }
 
@@ -1043,34 +1050,37 @@ function importData(e) {
   e.target.value = '';
 }
 
-// ── 주변 주유소 ──
-let gasState = { fuelType: 'B027', radius: 1000, sort: 1 };
+// ── 주유소 ──
 const OPINET_KEY = 'F260423169';
+const PROXY = 'https://corsproxy.io/?';
+let gasState = { fuelType: 'B027', sort: 1 };
 const BRAND_MAP = {
-  'SKE': 'SK에너지', 'GSC': 'GS칼텍스', 'HDO': '현대오일뱅크', 'SOL': 'S-OIL',
-  'RTO': '자영알뜰', 'RTX': '고속도로알뜰', 'NHO': '농협알뜰', 'ETC': '기타',
-  'E1G': 'E1', 'SKG': 'SK가스'
+  'SKE':'SK에너지','GSC':'GS칼텍스','HDO':'현대오일뱅크','SOL':'S-OIL',
+  'RTO':'자영알뜰','RTX':'고속도로알뜰','NHO':'농협알뜰','ETC':'기타','E1G':'E1','SKG':'SK가스'
 };
-
-function openLocationSettings() {
-  // 설치된 PWA(WebAPK) 앱 설정으로 이동
-  try {
-    window.location.href = 'intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;package=com.tankjino.carbudget;end';
-  } catch(e) {
-    window.location.href = 'intent:#Intent;action=android.settings.SETTINGS;end';
-  }
-}
+const AREA_DATA = {
+  '서울':[{cd:'0101',nm:'종로구'},{cd:'0102',nm:'중구'},{cd:'0103',nm:'용산구'},{cd:'0104',nm:'성동구'},{cd:'0105',nm:'광진구'},{cd:'0106',nm:'동대문구'},{cd:'0107',nm:'중랑구'},{cd:'0108',nm:'성북구'},{cd:'0109',nm:'강북구'},{cd:'0110',nm:'도봉구'},{cd:'0111',nm:'노원구'},{cd:'0112',nm:'은평구'},{cd:'0113',nm:'서대문구'},{cd:'0114',nm:'마포구'},{cd:'0115',nm:'양천구'},{cd:'0116',nm:'강서구'},{cd:'0117',nm:'구로구'},{cd:'0118',nm:'금천구'},{cd:'0119',nm:'영등포구'},{cd:'0120',nm:'동작구'},{cd:'0121',nm:'관악구'},{cd:'0122',nm:'서초구'},{cd:'0123',nm:'강남구'},{cd:'0124',nm:'송파구'},{cd:'0125',nm:'강동구'}],
+  '부산':[{cd:'0601',nm:'중구'},{cd:'0602',nm:'서구'},{cd:'0603',nm:'동구'},{cd:'0604',nm:'영도구'},{cd:'0605',nm:'부산진구'},{cd:'0606',nm:'동래구'},{cd:'0607',nm:'남구'},{cd:'0608',nm:'북구'},{cd:'0609',nm:'해운대구'},{cd:'0610',nm:'사하구'},{cd:'0611',nm:'금정구'},{cd:'0612',nm:'강서구'},{cd:'0613',nm:'연제구'},{cd:'0614',nm:'수영구'},{cd:'0615',nm:'사상구'},{cd:'0616',nm:'기장군'}],
+  '대구':[{cd:'0701',nm:'중구'},{cd:'0702',nm:'동구'},{cd:'0703',nm:'서구'},{cd:'0704',nm:'남구'},{cd:'0705',nm:'북구'},{cd:'0706',nm:'수성구'},{cd:'0707',nm:'달서구'},{cd:'0708',nm:'달성군'}],
+  '인천':[{cd:'0401',nm:'중구'},{cd:'0402',nm:'동구'},{cd:'0403',nm:'미추홀구'},{cd:'0404',nm:'연수구'},{cd:'0405',nm:'남동구'},{cd:'0406',nm:'부평구'},{cd:'0407',nm:'계양구'},{cd:'0408',nm:'서구'},{cd:'0409',nm:'강화군'},{cd:'0410',nm:'옹진군'}],
+  '광주':[{cd:'0501',nm:'동구'},{cd:'0502',nm:'서구'},{cd:'0503',nm:'남구'},{cd:'0504',nm:'북구'},{cd:'0505',nm:'광산구'}],
+  '대전':[{cd:'0301',nm:'동구'},{cd:'0302',nm:'중구'},{cd:'0303',nm:'서구'},{cd:'0304',nm:'유성구'},{cd:'0305',nm:'대덕구'}],
+  '울산':[{cd:'0801',nm:'중구'},{cd:'0802',nm:'남구'},{cd:'0803',nm:'동구'},{cd:'0804',nm:'북구'},{cd:'0805',nm:'울주군'}],
+  '세종':[{cd:'1401',nm:'세종시'}],
+  '경기':[{cd:'0201',nm:'수원시'},{cd:'0202',nm:'성남시'},{cd:'0203',nm:'의정부시'},{cd:'0204',nm:'안양시'},{cd:'0205',nm:'부천시'},{cd:'0206',nm:'광명시'},{cd:'0207',nm:'평택시'},{cd:'0208',nm:'동두천시'},{cd:'0209',nm:'안산시'},{cd:'0210',nm:'고양시'},{cd:'0211',nm:'과천시'},{cd:'0212',nm:'구리시'},{cd:'0213',nm:'남양주시'},{cd:'0214',nm:'오산시'},{cd:'0215',nm:'시흥시'},{cd:'0216',nm:'군포시'},{cd:'0217',nm:'의왕시'},{cd:'0218',nm:'하남시'},{cd:'0219',nm:'용인시'},{cd:'0220',nm:'파주시'},{cd:'0221',nm:'이천시'},{cd:'0222',nm:'안성시'},{cd:'0223',nm:'김포시'},{cd:'0224',nm:'화성시'},{cd:'0225',nm:'광주시'},{cd:'0226',nm:'양주시'},{cd:'0227',nm:'포천시'},{cd:'0228',nm:'여주시'},{cd:'0229',nm:'연천군'},{cd:'0230',nm:'가평군'},{cd:'0231',nm:'양평군'}],
+  '강원':[{cd:'1101',nm:'춘천시'},{cd:'1102',nm:'원주시'},{cd:'1103',nm:'강릉시'},{cd:'1104',nm:'동해시'},{cd:'1105',nm:'태백시'},{cd:'1106',nm:'속초시'},{cd:'1107',nm:'삼척시'},{cd:'1108',nm:'홍천군'},{cd:'1109',nm:'횡성군'},{cd:'1110',nm:'영월군'},{cd:'1111',nm:'평창군'},{cd:'1112',nm:'정선군'},{cd:'1113',nm:'철원군'},{cd:'1114',nm:'화천군'},{cd:'1115',nm:'양구군'},{cd:'1116',nm:'인제군'},{cd:'1117',nm:'고성군'},{cd:'1118',nm:'양양군'}],
+  '충북':[{cd:'1301',nm:'청주시'},{cd:'1302',nm:'충주시'},{cd:'1303',nm:'제천시'},{cd:'1304',nm:'보은군'},{cd:'1305',nm:'옥천군'},{cd:'1306',nm:'영동군'},{cd:'1307',nm:'증평군'},{cd:'1308',nm:'진천군'},{cd:'1309',nm:'괴산군'},{cd:'1310',nm:'음성군'},{cd:'1311',nm:'단양군'}],
+  '충남':[{cd:'1201',nm:'천안시'},{cd:'1202',nm:'공주시'},{cd:'1203',nm:'보령시'},{cd:'1204',nm:'아산시'},{cd:'1205',nm:'서산시'},{cd:'1206',nm:'논산시'},{cd:'1207',nm:'계룡시'},{cd:'1208',nm:'당진시'},{cd:'1209',nm:'금산군'},{cd:'1210',nm:'부여군'},{cd:'1211',nm:'서천군'},{cd:'1212',nm:'청양군'},{cd:'1213',nm:'홍성군'},{cd:'1214',nm:'예산군'},{cd:'1215',nm:'태안군'}],
+  '전북':[{cd:'1601',nm:'전주시'},{cd:'1602',nm:'군산시'},{cd:'1603',nm:'익산시'},{cd:'1604',nm:'정읍시'},{cd:'1605',nm:'남원시'},{cd:'1606',nm:'김제시'},{cd:'1607',nm:'완주군'},{cd:'1608',nm:'진안군'},{cd:'1609',nm:'무주군'},{cd:'1610',nm:'장수군'},{cd:'1611',nm:'임실군'},{cd:'1612',nm:'순창군'},{cd:'1613',nm:'고창군'},{cd:'1614',nm:'부안군'}],
+  '전남':[{cd:'1501',nm:'목포시'},{cd:'1502',nm:'여수시'},{cd:'1503',nm:'순천시'},{cd:'1504',nm:'나주시'},{cd:'1505',nm:'광양시'},{cd:'1506',nm:'담양군'},{cd:'1507',nm:'곡성군'},{cd:'1508',nm:'구례군'},{cd:'1509',nm:'고흥군'},{cd:'1510',nm:'보성군'},{cd:'1511',nm:'화순군'},{cd:'1512',nm:'장흥군'},{cd:'1513',nm:'강진군'},{cd:'1514',nm:'해남군'},{cd:'1515',nm:'영암군'},{cd:'1516',nm:'무안군'},{cd:'1517',nm:'함평군'},{cd:'1518',nm:'영광군'},{cd:'1519',nm:'장성군'},{cd:'1520',nm:'완도군'},{cd:'1521',nm:'진도군'},{cd:'1522',nm:'신안군'}],
+  '경북':[{cd:'0901',nm:'포항시'},{cd:'0902',nm:'경주시'},{cd:'0903',nm:'김천시'},{cd:'0904',nm:'안동시'},{cd:'0905',nm:'구미시'},{cd:'0906',nm:'영주시'},{cd:'0907',nm:'영천시'},{cd:'0908',nm:'상주시'},{cd:'0909',nm:'문경시'},{cd:'0910',nm:'경산시'},{cd:'0911',nm:'군위군'},{cd:'0912',nm:'의성군'},{cd:'0913',nm:'청송군'},{cd:'0914',nm:'영양군'},{cd:'0915',nm:'영덕군'},{cd:'0916',nm:'청도군'},{cd:'0917',nm:'고령군'},{cd:'0918',nm:'성주군'},{cd:'0919',nm:'칠곡군'},{cd:'0920',nm:'예천군'},{cd:'0921',nm:'봉화군'},{cd:'0922',nm:'울진군'},{cd:'0923',nm:'울릉군'}],
+  '경남':[{cd:'1001',nm:'창원시'},{cd:'1002',nm:'진주시'},{cd:'1003',nm:'통영시'},{cd:'1004',nm:'사천시'},{cd:'1005',nm:'김해시'},{cd:'1006',nm:'밀양시'},{cd:'1007',nm:'거제시'},{cd:'1008',nm:'양산시'},{cd:'1009',nm:'의령군'},{cd:'1010',nm:'함안군'},{cd:'1011',nm:'창녕군'},{cd:'1012',nm:'고성군'},{cd:'1013',nm:'남해군'},{cd:'1014',nm:'하동군'},{cd:'1015',nm:'산청군'},{cd:'1016',nm:'함양군'},{cd:'1017',nm:'거창군'},{cd:'1018',nm:'합천군'}],
+  '제주':[{cd:'1701',nm:'제주시'},{cd:'1702',nm:'서귀포시'}]
+};
 
 function setGasFuelType(type, el) {
   gasState.fuelType = type;
-  document.querySelectorAll('#page-gasstation .gas-filter-row:first-child .gas-chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  loadGasStations();
-}
-
-function setGasRadius(r, el) {
-  gasState.radius = r;
-  document.querySelectorAll('#page-gasstation .gas-filter-row:nth-child(2) .gas-chip').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('#page-gasstation .gas-filter-row .gas-chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
   loadGasStations();
 }
@@ -1082,100 +1092,86 @@ function setGasSort(s, el) {
   loadGasStations();
 }
 
-// WGS84 → TM 좌표 변환 (한국 중부원점 GRS80)
-function wgs84ToTm(lat, lng) {
-  const a = 6378137.0, f = 1 / 298.257222101;
-  const e2 = 2 * f - f * f;
-  const lat0 = 38 * Math.PI / 180, lon0 = 127 * Math.PI / 180;
-  const k0 = 1.0, dx = 200000, dy = 500000;
-  const latR = lat * Math.PI / 180, lonR = lng * Math.PI / 180;
-  const N = a / Math.sqrt(1 - e2 * Math.sin(latR) ** 2);
-  const T = Math.tan(latR) ** 2, C = (e2 / (1 - e2)) * Math.cos(latR) ** 2;
-  const A = Math.cos(latR) * (lonR - lon0);
-  const e4 = e2 * e2, e6 = e4 * e2;
-  const M = phi => a * ((1 - e2/4 - 3*e4/64 - 5*e6/256)*phi
-    - (3*e2/8 + 3*e4/32 + 45*e6/1024)*Math.sin(2*phi)
-    + (15*e4/256 + 45*e6/1024)*Math.sin(4*phi)
-    - (35*e6/3072)*Math.sin(6*phi));
-  const x = k0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*(e2/(1-e2)))*A**5/120)+dx;
-  const y = k0*(M(latR)-M(lat0)+N*Math.tan(latR)*(A**2/2+(5-T+9*C+4*C*C)*A**4/24+(61-58*T+T*T+600*C-330*(e2/(1-e2)))*A**6/720))+dy;
-  return { x: Math.round(x), y: Math.round(y) };
+function initCitySelector() {
+  const sel = $('selCity');
+  if (sel.options.length > 1) return;
+  Object.keys(AREA_DATA).forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  });
+}
+
+function onCityChange() {
+  const cityName = $('selCity').value;
+  const distSel = $('selDistrict');
+  distSel.innerHTML = '<option value="">구/군 선택</option>';
+  $('gasList').innerHTML = '<div class="empty"><div class="empty-icon">🗺️</div><div class="empty-text">구/군을 선택해주세요.</div></div>';
+  if (!cityName) return;
+  (AREA_DATA[cityName] || []).forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.cd; opt.textContent = a.nm;
+    distSel.appendChild(opt);
+  });
+}
+
+function useGPS() {
+  if (!navigator.geolocation) { showToast('위치 서비스를 지원하지 않습니다'); return; }
+  $('gpsBtn').textContent = '📡 위치 확인 중...';
+  navigator.geolocation.getCurrentPosition(pos => {
+    $('gpsBtn').textContent = '📍 내 위치로 자동 검색';
+    showToast('✅ 위치 확인됨. 지역을 직접 선택해주세요.');
+  }, () => {
+    $('gpsBtn').textContent = '📍 내 위치로 자동 검색';
+    showToast('⚠️ 위치 권한 없음. 지역을 직접 선택해주세요.');
+  });
 }
 
 async function loadGasStations() {
+  const cityCode = $('selCity').value;
+  const areaCode = $('selDistrict').value;
   const list = $('gasList');
-  list.innerHTML = '<div class="gas-loading"><div class="gas-loading-icon">📡</div><div style="font-size:14px;color:var(--text-muted);">위치 정보를 가져오는 중...</div></div>';
+  if (!cityCode || !areaCode) return;
 
-  if (!navigator.geolocation) {
-    list.innerHTML = '<div class="empty"><div class="empty-icon">📍</div><div class="empty-text">이 기기는 위치 서비스를 지원하지 않습니다.</div></div>';
-    return;
-  }
+  list.innerHTML = '<div class="gas-loading"><div class="gas-loading-icon">⛽</div><div style="font-size:14px;color:var(--text-muted);">주유소 정보 조회 중...</div></div>';
+  try {
+    const url = `https://www.opinet.co.kr/api/lowTop10List.do?code=${OPINET_KEY}&out=json&prodcd=${gasState.fuelType}&area=${areaCode}`;
+    const res = await fetch(PROXY + encodeURIComponent(url));
+    const data = await res.json();
+    const stations = data?.RESULT?.OIL || [];
 
-  navigator.geolocation.getCurrentPosition(async pos => {
-    const { latitude: lat, longitude: lng } = pos.coords;
-    const tm = wgs84ToTm(lat, lng);
-    list.innerHTML = '<div class="gas-loading"><div class="gas-loading-icon">⛽</div><div style="font-size:14px;color:var(--text-muted);">주유소 정보를 조회 중...</div></div>';
-
-    try {
-      const apiUrl = `https://www.opinet.co.kr/api/aroundAll.do?code=${OPINET_KEY}&x=${tm.x}&y=${tm.y}&radius=${gasState.radius}&sort=${gasState.sort}&prodcd=${gasState.fuelType}&out=json`;
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
-
-      const res = await fetch(proxyUrl);
-      const data = await res.json();
-      const stations = data?.RESULT?.OIL || [];
-
-      if (stations.length === 0) {
-        list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">주변 ${gasState.radius/1000}km 내에<br>주유소가 없습니다.<br>반경을 넓혀보세요.</div></div>`;
-        return;
-      }
-
-      const fuelLabel = { 'B027': '휘발유', 'D047': '경유', 'K015': 'LPG' }[gasState.fuelType];
-      const minPrice = Math.min(...stations.map(s => s.PRICE));
-      const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-
-      list.innerHTML = `
-        <div class="gas-update-time">📋 ${fuelLabel} 기준 · 반경 ${gasState.radius/1000}km · ${now} 기준</div>
-        ${stations.map((s, i) => {
-          const dist = s.DISTANCE >= 1000 ? (s.DISTANCE/1000).toFixed(1)+'km' : Math.round(s.DISTANCE)+'m';
-          const brand = BRAND_MAP[s.POLL_DIV_CD] || s.POLL_DIV_NM || '기타';
-          const isCheap = s.PRICE === minPrice;
-          return `
-            <div class="gas-station-item">
-              <div class="gas-rank ${i < 3 ? 'top' : ''}">${i+1}</div>
-              <div class="gas-info">
-                <div class="gas-name">${s.OS_NM}</div>
-                <div class="gas-brand">${brand}</div>
-                <div class="gas-dist">📍 ${dist}</div>
-              </div>
-              <div class="gas-price">
-                <div class="gas-price-val ${isCheap ? 'cheap' : ''}">${s.PRICE.toLocaleString()}</div>
-                <div class="gas-price-unit">원/L ${isCheap ? '🏆' : ''}</div>
-              </div>
-            </div>
-          `;
-        }).join('')}
-      `;
-    } catch (e) {
-      list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">데이터를 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</div></div>`;
+    if (stations.length === 0) {
+      list.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">해당 지역 주유소 정보가 없습니다.</div></div>';
+      return;
     }
-  }, err => {
+    const fuelLabel = {'B027':'휘발유','D047':'경유','K015':'LPG'}[gasState.fuelType];
+    const now = new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
+    const minPrice = Math.min(...stations.map(s => Number(s.PRICE)));
+
     list.innerHTML = `
-      <div class="empty">
-        <div class="empty-icon">📍</div>
-        <div class="empty-text" style="margin-bottom:16px;">주변 주유소를 찾으려면<br>위치 권한이 필요합니다.</div>
-        <button class="btn btn-primary" style="max-width:260px;margin:0 auto 12px;" onclick="openLocationSettings()">📱 위치 권한 설정하기</button>
-        <div style="background:var(--card);border-radius:14px;padding:16px;text-align:left;margin-bottom:16px;box-shadow:var(--shadow);font-size:13px;line-height:2;">
-          <div style="font-weight:700;margin-bottom:6px;">✋ 위 버튼이 안 되면</div>
-          <div>1. 스마트폰 <b>설정</b> 앱 열기</div>
-          <div>2. <b>앱 → 오빠차계부</b> 선택</div>
-          <div>3. <b>권한 → 위치</b> 탭</div>
-          <div>4. <b>앱 사용 중에만 허용</b> 선택</div>
-          <div>5. 앱으로 돌아와 아래 버튼 클릭</div>
-        </div>
-        <button class="btn btn-secondary" style="max-width:260px;margin:0 auto;" onclick="loadGasStations()">🔄 다시 시도</button>
-      </div>
+      <div class="gas-update-time">📋 ${fuelLabel} 저가 TOP10 · ${now} 기준</div>
+      ${stations.map((s, i) => {
+        const brand = BRAND_MAP[s.POLL_DIV_CD] || '기타';
+        const price = Number(s.PRICE);
+        const isCheap = price === minPrice;
+        return `
+          <div class="gas-station-item">
+            <div class="gas-rank ${i < 3 ? 'top':''}"> ${i+1}</div>
+            <div class="gas-info">
+              <div class="gas-name">${s.OS_NM}</div>
+              <div class="gas-brand">${brand}</div>
+              <div class="gas-dist">📍 ${s.NEW_ADR || s.VAN_ADR || ''}</div>
+            </div>
+            <div class="gas-price">
+              <div class="gas-price-val ${isCheap?'cheap':''}">${price.toLocaleString()}</div>
+              <div class="gas-price-unit">원/L ${isCheap?'🏆':''}</div>
+            </div>
+          </div>`;
+      }).join('')}
     `;
-  }, { timeout: 10000, maximumAge: 60000 });
+  } catch(e) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">데이터를 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</div></div>';
+  }
 }
 
 // ── 초기화 ──
