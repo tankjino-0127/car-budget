@@ -252,7 +252,7 @@
     <div class="chart-wrap"><canvas id="monthlyChart"></canvas></div>
   </div>
   <div class="card">
-    <div class="card-title">리터당 단가 추이</div>
+    <div class="card-title">연비 추이 (km/L)</div>
     <div class="chart-wrap"><canvas id="effChart"></canvas></div>
   </div>
   <div class="card">
@@ -769,15 +769,16 @@ function renderDashboard() {
   const maintTotal = maintRecs.reduce((s, r) => s + r.amount, 0);
   const total = thisMonth.reduce((s, r) => s + r.amount, 0);
 
-  // 연비 계산 (최근 주유 2건 기준)
-  const sortedFuel = recs.filter(r => r.type === 'fuel' && r.mileage).sort((a, b) => a.date.localeCompare(b.date));
-  let effText = '평균 연비: — km/L';
+  // 연비 계산 (금액 ÷ 리터당단가 = 주유량 → 연비)
+  const sortedFuel = recs.filter(r => r.type === 'fuel' && r.mileage && r.unitPrice > 0 && r.amount > 0).sort((a, b) => a.date.localeCompare(b.date));
+  let effText = '연비: 데이터 부족';
   if (sortedFuel.length >= 2) {
     const last = sortedFuel[sortedFuel.length - 1];
     const prev = sortedFuel[sortedFuel.length - 2];
     const dist = last.mileage - prev.mileage;
-    if (dist > 0) {
-      effText = `주행거리: ${fmt(dist)} km`;
+    const liters = last.amount / last.unitPrice;
+    if (dist > 0 && liters > 0) {
+      effText = `최근 연비: ${(dist / liters).toFixed(1)} km/L`;
     }
   }
 
@@ -889,11 +890,15 @@ function renderStats() {
     }
   });
 
-  // 연비 추이
-  const fuelRecs = recs.filter(r => r.type === 'fuel' && r.unitPrice > 0).sort((a, b) => a.date.localeCompare(b.date));
+  // 연비 추이 (금액 ÷ 리터당단가 = 주유량, 주행거리차이 ÷ 주유량 = 연비)
+  const fuelRecs = recs.filter(r => r.type === 'fuel' && r.unitPrice > 0 && r.amount > 0 && r.mileage > 0).sort((a, b) => a.date.localeCompare(b.date));
   const effData = [];
-  for (let i = 0; i < fuelRecs.length; i++) {
-    if (fuelRecs[i].unitPrice > 0) effData.push({ label: fuelRecs[i].date.slice(5), eff: fuelRecs[i].unitPrice });
+  for (let i = 1; i < fuelRecs.length; i++) {
+    const dist = fuelRecs[i].mileage - fuelRecs[i-1].mileage;
+    const liters = fuelRecs[i].amount / fuelRecs[i].unitPrice;
+    if (dist > 0 && liters > 0) {
+      effData.push({ label: fuelRecs[i].date.slice(5), eff: +(dist / liters).toFixed(1) });
+    }
   }
 
   if (charts.eff) charts.eff.destroy();
@@ -908,7 +913,7 @@ function renderStats() {
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-        y: { ticks: { font: { size: 10 }, callback: v => v + ' km/L' }, grid: { color: '#F0F0F0' } }
+        y: { ticks: { font: { size: 10 }, callback: v => v + ' km/L' }, grid: { color: '#F0F0F0' }, beginAtZero: false }
       }
     }
   });
