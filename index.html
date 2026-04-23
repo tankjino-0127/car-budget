@@ -1052,6 +1052,16 @@ const BRAND_MAP = {
   'E1G': 'E1', 'SKG': 'SK가스'
 };
 
+function openLocationSettings() {
+  // Android Chrome 앱 설정으로 이동 시도
+  try {
+    window.location.href = 'intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:com.android.chrome;end';
+  } catch(e) {
+    // 실패 시 일반 설정 앱으로 이동
+    window.location.href = 'intent:#Intent;action=android.settings.SETTINGS;end';
+  }
+}
+
 function setGasFuelType(type, el) {
   gasState.fuelType = type;
   document.querySelectorAll('#page-gasstation .gas-filter-row:first-child .gas-chip').forEach(c => c.classList.remove('active'));
@@ -1150,7 +1160,22 @@ async function loadGasStations() {
       list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">데이터를 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</div></div>`;
     }
   }, err => {
-    list.innerHTML = `<div class="empty"><div class="empty-icon">📍</div><div class="empty-text">위치 권한이 필요합니다.<br>브라우저 설정에서 위치 권한을 허용해주세요.</div></div>`;
+    list.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">📍</div>
+        <div class="empty-text" style="margin-bottom:16px;">주변 주유소를 찾으려면<br>위치 권한이 필요합니다.</div>
+        <button class="btn btn-primary" style="max-width:260px;margin:0 auto 12px;" onclick="openLocationSettings()">📱 위치 권한 설정하기</button>
+        <div style="background:var(--card);border-radius:14px;padding:16px;text-align:left;margin-bottom:16px;box-shadow:var(--shadow);font-size:13px;line-height:2;">
+          <div style="font-weight:700;margin-bottom:6px;">✋ 위 버튼이 안 되면</div>
+          <div>1. 스마트폰 <b>설정</b> 앱 열기</div>
+          <div>2. <b>앱 → Chrome</b> 선택</div>
+          <div>3. <b>권한 → 위치</b> 탭</div>
+          <div>4. <b>앱 사용 중에만 허용</b> 선택</div>
+          <div>5. 아래 버튼 클릭</div>
+        </div>
+        <button class="btn btn-secondary" style="max-width:260px;margin:0 auto;" onclick="loadGasStations()">🔄 다시 시도</button>
+      </div>
+    `;
   }, { timeout: 10000, maximumAge: 60000 });
 }
 
