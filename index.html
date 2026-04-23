@@ -187,6 +187,29 @@
   .btn-upgrade:active { opacity: .9; transform: scale(.98); }
 
   .premium-badge { display: inline-flex; align-items: center; gap: 4px; background: linear-gradient(135deg, #1565C0, #7B1FA2); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; vertical-align: middle; margin-left: 6px; }
+
+  /* ── 주유소 ── */
+  .gas-filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .gas-chip { padding: 7px 14px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--card); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .gas-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .gas-station-item { background: var(--card); border-radius: 14px; padding: 14px 16px; margin-bottom: 8px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 12px; }
+  .gas-rank { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .gas-rank.top { background: var(--accent); }
+  .gas-info { flex: 1; min-width: 0; }
+  .gas-name { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gas-brand { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .gas-dist { font-size: 11px; color: var(--text-muted); }
+  .gas-price { text-align: right; flex-shrink: 0; }
+  .gas-price-val { font-size: 18px; font-weight: 800; color: var(--primary); }
+  .gas-price-unit { font-size: 11px; color: var(--text-muted); }
+  .gas-price-val.cheap { color: var(--success); }
+  .gas-loading { text-align: center; padding: 40px 20px; }
+  .gas-loading-icon { font-size: 36px; margin-bottom: 12px; animation: spin 1.5s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .gas-sort-row { display: flex; justify-content: flex-end; margin-bottom: 8px; gap: 6px; }
+  .gas-sort-btn { padding: 5px 12px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--bg); font-size: 12px; font-weight: 600; cursor: pointer; }
+  .gas-sort-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .gas-update-time { font-size: 11px; color: var(--text-muted); text-align: center; margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -286,6 +309,30 @@
   </div>
 </div>
 
+<!-- 페이지: 주변 주유소 -->
+<div class="page" id="page-gasstation">
+  <div class="gas-filter-row">
+    <div class="gas-chip active" onclick="setGasFuelType('B027',this)">⛽ 휘발유</div>
+    <div class="gas-chip" onclick="setGasFuelType('D047',this)">🛢 경유</div>
+    <div class="gas-chip" onclick="setGasFuelType('K015',this)">💨 LPG</div>
+  </div>
+  <div class="gas-filter-row">
+    <div class="gas-chip active" onclick="setGasRadius(1000,this)">1km</div>
+    <div class="gas-chip" onclick="setGasRadius(2000,this)">2km</div>
+    <div class="gas-chip" onclick="setGasRadius(5000,this)">5km</div>
+  </div>
+  <div class="gas-sort-row">
+    <button class="gas-sort-btn active" id="sortPrice" onclick="setGasSort(1,this)">💰 가격순</button>
+    <button class="gas-sort-btn" id="sortDist" onclick="setGasSort(2,this)">📍 거리순</button>
+  </div>
+  <div id="gasList">
+    <div class="gas-loading">
+      <div class="gas-loading-icon">📡</div>
+      <div style="font-size:14px;color:var(--text-muted);">위치 정보를 불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
 <!-- FAB -->
 <button class="fab" id="fab" onclick="openAddModal()">+</button>
 
@@ -299,6 +346,9 @@
   </button>
   <button class="nav-btn" onclick="showPage('stats',this)">
     <span class="nav-icon">📊</span>통계
+  </button>
+  <button class="nav-btn" onclick="showPage('gasstation',this)">
+    <span class="nav-icon">⛽</span>주유소
   </button>
   <button class="nav-btn" onclick="showPage('settings',this)">
     <span class="nav-icon">⚙️</span>설정
@@ -534,13 +584,14 @@ function showPage(name, btn) {
   if (btn) btn.classList.add('active');
   else {
     const navBtns = document.querySelectorAll('.nav-btn');
-    const map = { dashboard: 0, records: 1, stats: 2, settings: 3 };
+    const map = { dashboard: 0, records: 1, stats: 2, gasstation: 3, settings: 4 };
     if (map[name] !== undefined) navBtns[map[name]].classList.add('active');
   }
-  $('fab').style.display = name === 'stats' ? 'none' : 'flex';
+  $('fab').style.display = (name === 'stats' || name === 'gasstation') ? 'none' : 'flex';
   if (name === 'dashboard') renderDashboard();
   if (name === 'records') renderAllRecords();
   if (name === 'stats') renderStats();
+  if (name === 'gasstation') loadGasStations();
   if (name === 'settings') renderSettings();
 }
 
@@ -990,6 +1041,117 @@ function importData(e) {
   };
   reader.readAsText(file);
   e.target.value = '';
+}
+
+// ── 주변 주유소 ──
+let gasState = { fuelType: 'B027', radius: 1000, sort: 1 };
+const OPINET_KEY = 'F260423169';
+const BRAND_MAP = {
+  'SKE': 'SK에너지', 'GSC': 'GS칼텍스', 'HDO': '현대오일뱅크', 'SOL': 'S-OIL',
+  'RTO': '자영알뜰', 'RTX': '고속도로알뜰', 'NHO': '농협알뜰', 'ETC': '기타',
+  'E1G': 'E1', 'SKG': 'SK가스'
+};
+
+function setGasFuelType(type, el) {
+  gasState.fuelType = type;
+  document.querySelectorAll('#page-gasstation .gas-filter-row:first-child .gas-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  loadGasStations();
+}
+
+function setGasRadius(r, el) {
+  gasState.radius = r;
+  document.querySelectorAll('#page-gasstation .gas-filter-row:nth-child(2) .gas-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  loadGasStations();
+}
+
+function setGasSort(s, el) {
+  gasState.sort = s;
+  document.querySelectorAll('.gas-sort-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  loadGasStations();
+}
+
+// WGS84 → TM 좌표 변환 (한국 중부원점 GRS80)
+function wgs84ToTm(lat, lng) {
+  const a = 6378137.0, f = 1 / 298.257222101;
+  const e2 = 2 * f - f * f;
+  const lat0 = 38 * Math.PI / 180, lon0 = 127 * Math.PI / 180;
+  const k0 = 1.0, dx = 200000, dy = 500000;
+  const latR = lat * Math.PI / 180, lonR = lng * Math.PI / 180;
+  const N = a / Math.sqrt(1 - e2 * Math.sin(latR) ** 2);
+  const T = Math.tan(latR) ** 2, C = (e2 / (1 - e2)) * Math.cos(latR) ** 2;
+  const A = Math.cos(latR) * (lonR - lon0);
+  const e4 = e2 * e2, e6 = e4 * e2;
+  const M = phi => a * ((1 - e2/4 - 3*e4/64 - 5*e6/256)*phi
+    - (3*e2/8 + 3*e4/32 + 45*e6/1024)*Math.sin(2*phi)
+    + (15*e4/256 + 45*e6/1024)*Math.sin(4*phi)
+    - (35*e6/3072)*Math.sin(6*phi));
+  const x = k0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*(e2/(1-e2)))*A**5/120)+dx;
+  const y = k0*(M(latR)-M(lat0)+N*Math.tan(latR)*(A**2/2+(5-T+9*C+4*C*C)*A**4/24+(61-58*T+T*T+600*C-330*(e2/(1-e2)))*A**6/720))+dy;
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+async function loadGasStations() {
+  const list = $('gasList');
+  list.innerHTML = '<div class="gas-loading"><div class="gas-loading-icon">📡</div><div style="font-size:14px;color:var(--text-muted);">위치 정보를 가져오는 중...</div></div>';
+
+  if (!navigator.geolocation) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📍</div><div class="empty-text">이 기기는 위치 서비스를 지원하지 않습니다.</div></div>';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    const tm = wgs84ToTm(lat, lng);
+    list.innerHTML = '<div class="gas-loading"><div class="gas-loading-icon">⛽</div><div style="font-size:14px;color:var(--text-muted);">주유소 정보를 조회 중...</div></div>';
+
+    try {
+      const apiUrl = `https://www.opinet.co.kr/api/aroundAll.do?code=${OPINET_KEY}&x=${tm.x}&y=${tm.y}&radius=${gasState.radius}&sort=${gasState.sort}&prodcd=${gasState.fuelType}&out=json`;
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
+
+      const res = await fetch(proxyUrl);
+      const data = await res.json();
+      const stations = data?.RESULT?.OIL || [];
+
+      if (stations.length === 0) {
+        list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">주변 ${gasState.radius/1000}km 내에<br>주유소가 없습니다.<br>반경을 넓혀보세요.</div></div>`;
+        return;
+      }
+
+      const fuelLabel = { 'B027': '휘발유', 'D047': '경유', 'K015': 'LPG' }[gasState.fuelType];
+      const minPrice = Math.min(...stations.map(s => s.PRICE));
+      const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+
+      list.innerHTML = `
+        <div class="gas-update-time">📋 ${fuelLabel} 기준 · 반경 ${gasState.radius/1000}km · ${now} 기준</div>
+        ${stations.map((s, i) => {
+          const dist = s.DISTANCE >= 1000 ? (s.DISTANCE/1000).toFixed(1)+'km' : Math.round(s.DISTANCE)+'m';
+          const brand = BRAND_MAP[s.POLL_DIV_CD] || s.POLL_DIV_NM || '기타';
+          const isCheap = s.PRICE === minPrice;
+          return `
+            <div class="gas-station-item">
+              <div class="gas-rank ${i < 3 ? 'top' : ''}">${i+1}</div>
+              <div class="gas-info">
+                <div class="gas-name">${s.OS_NM}</div>
+                <div class="gas-brand">${brand}</div>
+                <div class="gas-dist">📍 ${dist}</div>
+              </div>
+              <div class="gas-price">
+                <div class="gas-price-val ${isCheap ? 'cheap' : ''}">${s.PRICE.toLocaleString()}</div>
+                <div class="gas-price-unit">원/L ${isCheap ? '🏆' : ''}</div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      `;
+    } catch (e) {
+      list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">데이터를 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</div></div>`;
+    }
+  }, err => {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">📍</div><div class="empty-text">위치 권한이 필요합니다.<br>브라우저 설정에서 위치 권한을 허용해주세요.</div></div>`;
+  }, { timeout: 10000, maximumAge: 60000 });
 }
 
 // ── 초기화 ──
