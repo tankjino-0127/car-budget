@@ -1053,11 +1053,10 @@ const BRAND_MAP = {
 };
 
 function openLocationSettings() {
-  // Android Chrome 앱 설정으로 이동 시도
+  // 설치된 PWA(WebAPK) 앱 설정으로 이동
   try {
-    window.location.href = 'intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:com.android.chrome;end';
+    window.location.href = 'intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;package=com.tankjino.carbudget;end';
   } catch(e) {
-    // 실패 시 일반 설정 앱으로 이동
     window.location.href = 'intent:#Intent;action=android.settings.SETTINGS;end';
   }
 }
@@ -1168,10 +1167,10 @@ async function loadGasStations() {
         <div style="background:var(--card);border-radius:14px;padding:16px;text-align:left;margin-bottom:16px;box-shadow:var(--shadow);font-size:13px;line-height:2;">
           <div style="font-weight:700;margin-bottom:6px;">✋ 위 버튼이 안 되면</div>
           <div>1. 스마트폰 <b>설정</b> 앱 열기</div>
-          <div>2. <b>앱 → Chrome</b> 선택</div>
+          <div>2. <b>앱 → 오빠차계부</b> 선택</div>
           <div>3. <b>권한 → 위치</b> 탭</div>
           <div>4. <b>앱 사용 중에만 허용</b> 선택</div>
-          <div>5. 아래 버튼 클릭</div>
+          <div>5. 앱으로 돌아와 아래 버튼 클릭</div>
         </div>
         <button class="btn btn-secondary" style="max-width:260px;margin:0 auto;" onclick="loadGasStations()">🔄 다시 시도</button>
       </div>
